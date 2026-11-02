@@ -3,7 +3,9 @@
 
 #include "Core/HW/DSPHLE/UCodes/AX.h"
 
+#include <algorithm>
 #include <array>
+#include <cstdlib>
 #include <cstring>
 #include <iterator>
 
@@ -124,6 +126,8 @@ void AXUCode::HandleCommandList()
   while (!end)
   {
     u16 cmd = m_cmdlist[curr_idx++];
+    if (cmd < 32)
+      m_dbg_cmds |= 1u << cmd;
 
     switch (cmd)
     {
@@ -472,6 +476,8 @@ void AXUCode::ProcessPBList(u32 pb_addr)
                           m_samples_auxB_left, m_samples_auxB_right, m_samples_auxB_surround}};
 
     ReadPB(memory, pb_addr, pb);
+    if (pb.running)
+      m_dbg_mixctl |= pb.mixer_control;
 
     PBUpdateData updates = LoadPBUpdates(memory, pb);
 
@@ -611,6 +617,31 @@ void AXUCode::RunCompressor(u16 threshold, u16 release_frames, u32 table_addr, u
 
 void AXUCode::OutputSamples(u32 lr_addr, u32 surround_addr)
 {
+  {
+    const int* bufs[9] = {m_samples_main_left,  m_samples_main_right,  m_samples_main_surround,
+                          m_samples_auxA_left,  m_samples_auxA_right,  m_samples_auxA_surround,
+                          m_samples_auxB_left,  m_samples_auxB_right,  m_samples_auxB_surround};
+    for (int b = 0; b < 9; ++b)
+      for (u32 i = 0; i < 5 * 32; ++i)
+        m_dbg_peak[b] = std::max(m_dbg_peak[b], std::abs(bufs[b][i]));
+    ++m_dbg_frames;
+    if (m_dbg_cmds != m_dbg_last_cmds || m_dbg_frames >= 100)
+    {
+      NOTICE_LOG_FMT(DSPHLE,
+                     "SURROUNDDBG crc={:08x} cmds={:08x} mixctl={:04x} dpl2rears={} "
+                     "peak mainLRS={} {} {} auxA={} {} {} auxB={} {} {}",
+                     m_crc, m_dbg_cmds, m_dbg_mixctl, m_dpl2_rears, m_dbg_peak[0], m_dbg_peak[1],
+                     m_dbg_peak[2], m_dbg_peak[3], m_dbg_peak[4], m_dbg_peak[5], m_dbg_peak[6],
+                     m_dbg_peak[7], m_dbg_peak[8]);
+      m_dbg_last_cmds = m_dbg_cmds;
+      m_dbg_frames = 0;
+      m_dbg_mixctl = 0;
+      for (int& p : m_dbg_peak)
+        p = 0;
+    }
+    m_dbg_cmds = 0;
+  }
+
   auto& memory = m_dsphle->GetSystem().GetMemory();
   memory.CopyToEmuSwapped(surround_addr, m_samples_main_surround, 5 * 32 * sizeof(int));
 

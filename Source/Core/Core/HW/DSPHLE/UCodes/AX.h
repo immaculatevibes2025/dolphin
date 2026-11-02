@@ -169,6 +169,12 @@ protected:
   // HLE surround: set when SEND_AUX_AND_MIX ran this frame (DPL2 mode), meaning
   // AUXB L/R hold the rear left/right channels that the ucode encodes into L/R.
   bool m_dpl2_rears = false;
+  // Temporary diagnostics for HLE surround work
+  u32 m_dbg_cmds = 0;
+  u32 m_dbg_mixctl = 0;
+  u32 m_dbg_frames = 0;
+  u32 m_dbg_last_cmds = 0xFFFFFFFF;
+  int m_dbg_peak[9]{};
   void MixAUXBLR(u32 ul_addr, u32 dl_addr);
   void SetOppositeLR(u32 src_addr);
   void SendAUXAndMix(u32 main_auxa_up, u32 auxb_s_up, u32 main_l_dl, u32 main_r_dl, u32 auxb_l_dl,

@@ -125,6 +125,9 @@ private:
   MixingBuffer m_buf_front_right{};
   MixingBuffer m_buf_back_left{};
   MixingBuffer m_buf_back_right{};
+  // Temporary diagnostics for HLE surround work
+  int m_dbg_peak[4]{};
+  u32 m_dbg_frames = 0;
   MixingBuffer m_buf_front_left_reverb{};
   MixingBuffer m_buf_front_right_reverb{};
   MixingBuffer m_buf_back_left_reverb{};

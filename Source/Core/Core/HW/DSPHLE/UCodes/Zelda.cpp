@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdlib>
 #include <map>
 
 #include "Common/BitField.h"
@@ -1416,7 +1417,38 @@ void ZeldaAudioRenderer::AddVoice(u16 voice_id)
 
 void ZeldaAudioRenderer::FinalizeFrame()
 {
-  // TODO: Dolby mixing.
+  // HLE surround: the real ucode filters the back buffers and folds them into
+  // the front L/R as a Dolby Pro Logic (II) matrix. HLE used to drop them, so
+  // voices positioned behind the listener went silent. Encode them anti-phase
+  // (no 90-degree shift yet): BL -> -0.8718 L / +0.4899 R, BR -> -0.4899 L / +0.8718 R.
+  int dbg_peak[4] = {};
+  for (size_t i = 0; i < m_buf_front_left.size(); ++i)
+  {
+    const s32 bl = m_buf_back_left[i];
+    const s32 br = m_buf_back_right[i];
+    dbg_peak[0] = std::max(dbg_peak[0], std::abs(s32(m_buf_front_left[i])));
+    dbg_peak[1] = std::max(dbg_peak[1], std::abs(s32(m_buf_front_right[i])));
+    dbg_peak[2] = std::max(dbg_peak[2], std::abs(bl));
+    dbg_peak[3] = std::max(dbg_peak[3], std::abs(br));
+    const s32 l = s32(m_buf_front_left[i]) - ((bl * 28567 + br * 16053) >> 15);
+    const s32 r = s32(m_buf_front_right[i]) + ((bl * 16053 + br * 28567) >> 15);
+    m_buf_front_left[i] = static_cast<s16>(std::clamp(l, -32768, 32767));
+    m_buf_front_right[i] = static_cast<s16>(std::clamp(r, -32768, 32767));
+  }
+  m_buf_back_left.fill(0);
+  m_buf_back_right.fill(0);
+
+  // Temporary diagnostics (about once per second at ~200 frames/s).
+  for (int i = 0; i < 4; ++i)
+    m_dbg_peak[i] = std::max(m_dbg_peak[i], dbg_peak[i]);
+  if (++m_dbg_frames >= 200)
+  {
+    NOTICE_LOG_FMT(DSPHLE, "SURROUNDDBG zelda flags={:08x} peak FL={} FR={} BL={} BR={}", m_flags,
+                   m_dbg_peak[0], m_dbg_peak[1], m_dbg_peak[2], m_dbg_peak[3]);
+    m_dbg_frames = 0;
+    for (int& p : m_dbg_peak)
+      p = 0;
+  }
 
   ApplyVolumeInPlace_4_12(&m_buf_front_left, m_output_volume);
   ApplyVolumeInPlace_4_12(&m_buf_front_right, m_output_volume);

@@ -169,6 +169,9 @@ protected:
   // HLE surround: set when SEND_AUX_AND_MIX ran this frame (DPL2 mode), meaning
   // AUXB L/R hold the rear left/right channels that the ucode encodes into L/R.
   bool m_dpl2_rears = false;
+  // Old GC ucode (0x4e8a8b21): a voice with mixer_control bit 0x0010 means DPL2
+  // mode, where AUXB L/R are the rear channels rather than an effects send.
+  bool m_old_dpl2_frame = false;
   // Temporary diagnostics for HLE surround work
   u32 m_dbg_cmds = 0;
   u32 m_dbg_mixctl = 0;

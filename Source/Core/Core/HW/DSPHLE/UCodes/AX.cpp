@@ -370,6 +370,7 @@ AXMixControl AXUCode::ConvertMixerControl(u32 mixer_control)
 void AXUCode::SetupProcessing(u32 init_addr)
 {
   m_dpl2_rears = false;
+  m_old_dpl2_frame = false;
   const std::array<BufferDesc, 9> buffers = {{
       {m_samples_main_left, 32},
       {m_samples_main_right, 32},
@@ -477,7 +478,11 @@ void AXUCode::ProcessPBList(u32 pb_addr)
 
     ReadPB(memory, pb_addr, pb);
     if (pb.running)
+    {
       m_dbg_mixctl |= pb.mixer_control;
+      if (m_crc == 0x4e8a8b21 && (pb.mixer_control & 0x0010))
+        m_old_dpl2_frame = true;
+    }
 
     PBUpdateData updates = LoadPBUpdates(memory, pb);
 
@@ -683,19 +688,28 @@ void AXUCode::MixAUXBLR(u32 ul_addr, u32 dl_addr)
   memory.CopyToEmuSwapped(ul_addr + sizeof(m_samples_auxB_left), m_samples_auxB_right,
                           sizeof(m_samples_auxB_right));
 
+  // HLE surround: in old-ucode DPL2 mode AUXB L/R are the rear channels.
+  // Keep them separate so OutputSamples encodes them as rears instead of
+  // adding them to the fronts.
+  const bool as_rears = m_old_dpl2_frame;
+  if (as_rears)
+    m_dpl2_rears = true;
+
   // Mix AUXB L/R to MAIN L/R, and replace AUXB L/R
   int* ptr = reinterpret_cast<int*>(memory.GetPointerForRange(dl_addr, 2 * 5 * 32 * sizeof(int)));
   for (u32 i = 0; i < 5 * 32; ++i)
   {
     int samp = Common::swap32(*ptr++);
     m_samples_auxB_left[i] = samp;
-    m_samples_main_left[i] += samp;
+    if (!as_rears)
+      m_samples_main_left[i] += samp;
   }
   for (u32 i = 0; i < 5 * 32; ++i)
   {
     int samp = Common::swap32(*ptr++);
     m_samples_auxB_right[i] = samp;
-    m_samples_main_right[i] += samp;
+    if (!as_rears)
+      m_samples_main_right[i] += samp;
   }
 }
 

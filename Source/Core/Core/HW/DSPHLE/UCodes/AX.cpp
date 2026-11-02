@@ -619,8 +619,11 @@ void AXUCode::OutputSamples(u32 lr_addr, u32 surround_addr)
   // Output samples clamped to 16 bits and interlaced RLRLRLRLRL...
   for (u32 i = 0; i < 5 * 32; ++i)
   {
-    s16 left = ClampS16(m_samples_main_left[i]);
-    s16 right = ClampS16(m_samples_main_right[i]);
+    // HLE surround: matrix-encode the surround bus anti-phase into L/R so a
+    // Pro Logic (II) decoder steers it to the rear speakers. 0.7071 = -3 dB.
+    const s64 s = (s64(m_samples_main_surround[i]) * 23170) >> 15;
+    s16 left = ClampS16(m_samples_main_left[i] - s);
+    s16 right = ClampS16(m_samples_main_right[i] + s);
 
     buffer[2 * i + 0] = Common::swap16(right);
     buffer[2 * i + 1] = Common::swap16(left);

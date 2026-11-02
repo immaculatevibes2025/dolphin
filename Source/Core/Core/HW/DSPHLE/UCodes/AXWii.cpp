@@ -599,8 +599,11 @@ void AXWiiUCode::OutputSamples(u32 lr_addr, u32 surround_addr, u16 volume, bool 
   for (size_t i = 0; i < volume_ramp.size(); ++i)
   {
     // Cast to s64 to avoid overflow.
-    s64 left = m_samples_main_left[i];
-    s64 right = m_samples_main_right[i];
+    // HLE surround: matrix-encode the surround bus anti-phase into L/R so a
+    // Pro Logic (II) decoder steers it to the rear speakers. 0.7071 = -3 dB.
+    const s64 s = (s64(m_samples_main_surround[i]) * 23170) >> 15;
+    s64 left = s64(m_samples_main_left[i]) - s;
+    s64 right = s64(m_samples_main_right[i]) + s;
 
     // Apply global volume.
     left = (left * volume_ramp[i]) >> 15;

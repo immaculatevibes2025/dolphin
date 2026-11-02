@@ -1,0 +1,32 @@
+name: Windows build (HLE surround)
+
+on:
+  push:
+    branches: [hle-surround]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - uses: microsoft/setup-msbuild@v2
+
+      - name: Build
+        run: msbuild Source\dolphin-emu.sln /m /p:Configuration=Release /p:Platform=x64 /v:minimal
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $out = "Binary\x64"
+          Remove-Item "$out\*.pdb","$out\*.exp","$out\*.lib" -ErrorAction SilentlyContinue
+          New-Item -ItemType File "$out\portable.txt" -Force | Out-Null
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Dolphin-HLE-Surround-win-x64
+          path: Binary/x64/

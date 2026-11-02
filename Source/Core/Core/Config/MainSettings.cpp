@@ -324,7 +324,7 @@ const Info<std::string> MAIN_WASAPI_DEVICE{{System::Main, "DSP", "WASAPIDevice"}
 
 bool ShouldUseDPL2Decoder()
 {
-  return Get(MAIN_DPL2_DECODER) && !Get(MAIN_DSP_HLE);
+  return Get(MAIN_DPL2_DECODER);
 }
 
 // Main.General

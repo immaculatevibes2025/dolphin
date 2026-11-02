@@ -332,7 +332,7 @@ void AudioPane::OnDspChanged()
 {
   const auto backend = Config::Get(Config::MAIN_AUDIO_BACKEND);
   const bool enabled =
-      AudioCommon::SupportsDPL2Decoder(backend) && !Config::Get(Config::MAIN_DSP_HLE);
+      AudioCommon::SupportsDPL2Decoder(backend);
   m_dolby_pro_logic->setEnabled(enabled);
   m_dolby_quality_label->setEnabled(enabled && m_dolby_pro_logic->isChecked());
   m_dolby_quality_combo->setEnabled(enabled && m_dolby_pro_logic->isChecked());
@@ -370,8 +370,7 @@ void AudioPane::OnEmulationStateChanged(bool running)
   m_dsp_combo->setEnabled(!running);
   m_backend_label->setEnabled(!running);
   m_backend_combo->setEnabled(!running);
-  if (AudioCommon::SupportsDPL2Decoder(Config::Get(Config::MAIN_AUDIO_BACKEND)) &&
-      !Config::Get(Config::MAIN_DSP_HLE))
+  if (AudioCommon::SupportsDPL2Decoder(Config::Get(Config::MAIN_AUDIO_BACKEND)))
   {
     m_dolby_pro_logic->setEnabled(!running);
     m_dolby_quality_label->setEnabled(!running && m_dolby_pro_logic->isChecked());

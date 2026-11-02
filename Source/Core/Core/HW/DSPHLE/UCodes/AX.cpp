@@ -365,6 +365,7 @@ AXMixControl AXUCode::ConvertMixerControl(u32 mixer_control)
 
 void AXUCode::SetupProcessing(u32 init_addr)
 {
+  m_dpl2_rears = false;
   const std::array<BufferDesc, 9> buffers = {{
       {m_samples_main_left, 32},
       {m_samples_main_right, 32},
@@ -622,8 +623,19 @@ void AXUCode::OutputSamples(u32 lr_addr, u32 surround_addr)
     // HLE surround: matrix-encode the surround bus anti-phase into L/R so a
     // Pro Logic (II) decoder steers it to the rear speakers. 0.7071 = -3 dB.
     const s64 s = (s64(m_samples_main_surround[i]) * 23170) >> 15;
-    s16 left = ClampS16(m_samples_main_left[i] - s);
-    s16 right = ClampS16(m_samples_main_right[i] + s);
+    s64 l = s64(m_samples_main_left[i]) - s;
+    s64 r = s64(m_samples_main_right[i]) + s;
+    if (m_dpl2_rears)
+    {
+      // DPL2 rear encode (no 90-degree shift yet): Ls -> -0.8718 Lt / +0.4899 Rt,
+      // Rs -> -0.4899 Lt / +0.8718 Rt. Anti-phase steers rear, amplitude steers L/R.
+      const s64 ls = m_samples_auxB_left[i];
+      const s64 rs = m_samples_auxB_right[i];
+      l -= (ls * 28567 + rs * 16053) >> 15;
+      r += (ls * 16053 + rs * 28567) >> 15;
+    }
+    s16 left = ClampS16(l);
+    s16 right = ClampS16(r);
 
     buffer[2 * i + 0] = Common::swap16(right);
     buffer[2 * i + 1] = Common::swap16(left);
@@ -679,6 +691,8 @@ void AXUCode::SendAUXAndMix(u32 auxa_lrs_up, u32 auxb_s_up, u32 main_l_dl, u32 m
                           32 * 5 * sizeof(int));
   memory.CopyToEmuSwapped(auxa_lrs_up + 2 * 32 * 5 * sizeof(int), m_samples_auxA_surround,
                           32 * 5 * sizeof(int));
+
+  m_dpl2_rears = true;
 
   // Upload AUXB S
   memory.CopyToEmuSwapped(auxb_s_up, m_samples_auxB_surround, sizeof(m_samples_auxB_surround));

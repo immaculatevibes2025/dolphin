@@ -29,6 +29,10 @@ jobs:
         run: |
           $out = "build\release\x64\Binaries"
           Get-ChildItem $out -Recurse -Include *.pdb,*.exp,*.lib,*.ilk | Remove-Item -ErrorAction SilentlyContinue
+          # Replace build-tree symlinks with real copies so the zip is self-contained
+          Remove-Item "$out\Sys","$out\qt.conf" -Force -Recurse -ErrorAction SilentlyContinue
+          Copy-Item "Data\Sys" "$out\Sys" -Recurse
+          Copy-Item "Source\Core\DolphinQt\qt.conf.win" "$out\qt.conf"
           New-Item -ItemType File "$out\portable.txt" -Force | Out-Null
           Get-ChildItem $out
 

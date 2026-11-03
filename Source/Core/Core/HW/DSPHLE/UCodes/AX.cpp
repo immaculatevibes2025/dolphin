@@ -775,8 +775,10 @@ void AXUCode::MixAUXBLR(u32 ul_addr, u32 dl_addr)
   // Keep them separate so OutputSamples encodes them as rears instead of
   // adding them to the fronts.
   const bool as_rears = m_old_dpl2_frame || m_prev_dpl2_frame;
+  // The surround components are mixed here, so OutputSamples must not encode
+  // AUXB a second time.
   if (as_rears)
-    m_dpl2_rears = true;
+    m_dpl2_rears = false;
 
   // Temporary: compare AUXB sent to the CPU with what comes back.
   if (as_rears && m_dbg_auxbret_logs < 2000)
@@ -808,23 +810,19 @@ void AXUCode::MixAUXBLR(u32 ul_addr, u32 dl_addr)
   for (u32 i = 0; i < 5 * 32; ++i)
   {
     int samp = Common::swap32(*ptr++);
-    // In DPL2 mode keep this frame's AUXB for the surround encode: the CPU
-    // hands back the previous frame's AUXB unchanged (5 ms late), which would
-    // misalign the surround components against the fronts.
-    if (!as_rears)
-    {
-      m_samples_auxB_left[i] = samp;
+    m_samples_auxB_left[i] = samp;
+    // DPL2: the returned AUXB L is the Lt surround component and goes into the
+    // left output inverted (matches LLE for Soul Calibur 2's surround test).
+    if (as_rears)
+      m_samples_main_left[i] -= samp;
+    else
       m_samples_main_left[i] += samp;
-    }
   }
   for (u32 i = 0; i < 5 * 32; ++i)
   {
     int samp = Common::swap32(*ptr++);
-    if (!as_rears)
-    {
-      m_samples_auxB_right[i] = samp;
-      m_samples_main_right[i] += samp;
-    }
+    m_samples_auxB_right[i] = samp;
+    m_samples_main_right[i] += samp;
   }
 }
 

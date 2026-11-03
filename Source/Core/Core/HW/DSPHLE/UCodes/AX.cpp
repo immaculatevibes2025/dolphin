@@ -483,7 +483,7 @@ void AXUCode::ProcessPBList(u32 pb_addr)
       if (m_crc == 0x4e8a8b21 && (pb.mixer_control & 0x0010))
         m_old_dpl2_frame = true;
       // Temporary: per-voice volumes for DPL2-mode voices, rate limited.
-      if ((pb.mixer_control & 0x4010) && m_dbg_voice_logs < 400)
+      if ((pb.mixer_control & 0x0600) && (pb.mixer_control & 0x4000) && m_dbg_voice_logs < 3000)
       {
         ++m_dbg_voice_logs;
         const auto& mx = pb.mixer;
@@ -771,12 +771,29 @@ void AXUCode::SendAUXAndMix(u32 auxa_lrs_up, u32 auxb_s_up, u32 main_l_dl, u32 m
   };
 
   // Download and mix
+  int pre[4] = {}, dl[4] = {};
+  int auxb_s_peak = 0;
+  for (size_t j = 0; j < 32 * 5; ++j)
+    auxb_s_peak = std::max(auxb_s_peak, std::abs(m_samples_auxB_surround[j]));
   for (size_t i = 0; i < dl_buffers.size(); ++i)
   {
     const int* dl_src =
         reinterpret_cast<int*>(memory.GetPointerForRange(dl_addrs[i], 32 * 5 * sizeof(int)));
     for (size_t j = 0; j < 32 * 5; ++j)
-      dl_buffers[i][j] += (int)Common::swap32(*dl_src++);
+    {
+      const int v = (int)Common::swap32(*dl_src++);
+      pre[i] = std::max(pre[i], std::abs(dl_buffers[i][j]));
+      dl[i] = std::max(dl[i], std::abs(v));
+      dl_buffers[i][j] += v;
+    }
+  }
+  if ((pre[2] | pre[3] | dl[2] | dl[3]) && m_dbg_sendaux_logs < 3000)
+  {
+    ++m_dbg_sendaux_logs;
+    NOTICE_LOG_FMT(DSPHLE,
+                   "SURROUNDSEND voiceMix mainLR={} {} auxBLR={} {} auxBS(up)={} | "
+                   "cpuDownload mainLR={} {} auxBLR={} {}",
+                   pre[0], pre[1], pre[2], pre[3], auxb_s_peak, dl[0], dl[1], dl[2], dl[3]);
   }
 }
 

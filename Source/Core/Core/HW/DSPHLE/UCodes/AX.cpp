@@ -677,12 +677,12 @@ void AXUCode::OutputSamples(u32 lr_addr, u32 surround_addr)
     s64 r = s64(m_samples_main_right[i]) + s;
     if (m_dpl2_rears)
     {
-      // DPL2 rear encode (no 90-degree shift yet): Ls -> -0.8718 Lt / +0.4899 Rt,
-      // Rs -> -0.4899 Lt / +0.8718 Rt. Anti-phase steers rear, amplitude steers L/R.
+      // DPL2 rear encode (no 90-degree shift yet): Ls -> -0.816 Lt / +0.577 Rt,
+      // Rs -> -0.577 Lt / +0.816 Rt. Anti-phase steers rear, amplitude steers L/R.
       const s64 ls = m_samples_auxB_left[i];
       const s64 rs = m_samples_auxB_right[i];
-      l -= (ls * 28567 + rs * 16053) >> 15;
-      r += (ls * 16053 + rs * 28567) >> 15;
+      l -= (ls * 26739 + rs * 18907) >> 15;
+      r += (ls * 18907 + rs * 26739) >> 15;
     }
     s16 left = ClampS16(l);
     s16 right = ClampS16(r);

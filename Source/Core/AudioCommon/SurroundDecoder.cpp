@@ -16,6 +16,12 @@ SurroundDecoder::SurroundDecoder(u32 sample_rate, u32 frame_block_size)
 {
   m_fsdecoder = std::make_unique<DPL2FSDecoder>();
   m_fsdecoder->Init(cs_5point1, m_frame_block_size, m_sample_rate);
+  // Feed the LFE channel (it was always silent): bass below ~80 Hz goes fully
+  // to the sub, fading out by ~120 Hz. Cutoffs are fractions of Nyquist.
+  const float nyquist = m_sample_rate / 2.0f;
+  m_fsdecoder->set_low_cutoff(80.0f / nyquist);
+  m_fsdecoder->set_high_cutoff(120.0f / nyquist);
+  m_fsdecoder->set_bass_redirection(true);
 }
 
 SurroundDecoder::~SurroundDecoder() = default;

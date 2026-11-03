@@ -1420,7 +1420,7 @@ void ZeldaAudioRenderer::FinalizeFrame()
   // HLE surround: the real ucode filters the back buffers and folds them into
   // the front L/R as a Dolby Pro Logic (II) matrix. HLE used to drop them, so
   // voices positioned behind the listener went silent. Encode them anti-phase
-  // (no 90-degree shift yet): BL -> -0.8718 L / +0.4899 R, BR -> -0.4899 L / +0.8718 R.
+  // (no 90-degree shift yet): BL -> -0.816 L / +0.577 R, BR -> -0.577 L / +0.816 R.
   int dbg_peak[4] = {};
   for (size_t i = 0; i < m_buf_front_left.size(); ++i)
   {
@@ -1430,8 +1430,8 @@ void ZeldaAudioRenderer::FinalizeFrame()
     dbg_peak[1] = std::max(dbg_peak[1], std::abs(s32(m_buf_front_right[i])));
     dbg_peak[2] = std::max(dbg_peak[2], std::abs(bl));
     dbg_peak[3] = std::max(dbg_peak[3], std::abs(br));
-    const s32 l = s32(m_buf_front_left[i]) - ((bl * 28567 + br * 16053) >> 15);
-    const s32 r = s32(m_buf_front_right[i]) + ((bl * 16053 + br * 28567) >> 15);
+    const s32 l = s32(m_buf_front_left[i]) - ((bl * 26739 + br * 18907) >> 15);
+    const s32 r = s32(m_buf_front_right[i]) + ((bl * 18907 + br * 26739) >> 15);
     m_buf_front_left[i] = static_cast<s16>(std::clamp(l, -32768, 32767));
     m_buf_front_right[i] = static_cast<s16>(std::clamp(r, -32768, 32767));
   }

@@ -639,52 +639,50 @@ void AXUCode::RunCompressor(u16 threshold, u16 release_frames, u32 table_addr, u
   }
 }
 
-AXUCode::DPL2Shifter::DPL2Shifter()
+namespace
 {
-  constexpr double pi = 3.14159265358979323846;
-  for (int n = 0; n < TAPS; ++n)
+constexpr float kChainA[4] = {0.6923878f * 0.6923878f, 0.9360654322959f * 0.9360654322959f,
+                              0.9882295226860f * 0.9882295226860f,
+                              0.9987488452737f * 0.9987488452737f};
+constexpr float kChainB[4] = {0.4021921162426f * 0.4021921162426f,
+                              0.8561710882420f * 0.8561710882420f,
+                              0.9722909545651f * 0.9722909545651f,
+                              0.9952884791278f * 0.9952884791278f};
+}  // namespace
+
+float AXUCode::DPL2Shifter::Chain::Process(float in, const float* a2)
+{
+  float v = in;
+  for (int k = 0; k < 4; ++k)
   {
-    const int k = n - DELAY;
-    double h = 0.0;
-    if (k % 2 != 0)
-      h = 2.0 / (pi * k);
-    const double w = 0.42 - 0.5 * std::cos(2 * pi * n / (TAPS - 1)) +
-                     0.08 * std::cos(4 * pi * n / (TAPS - 1));  // Blackman
-    coef[n] = static_cast<float>(h * w);
+    // y[n] = a^2 * (x[n] + y[n-2]) - x[n-2]
+    const float y = a2[k] * (v + y2[k]) - x2[k];
+    x2[k] = x1[k];
+    x1[k] = v;
+    y2[k] = y1[k];
+    y1[k] = y;
+    v = y;
   }
+  return v;
 }
 
 void AXUCode::DPL2Shifter::Reset()
 {
-  std::fill(std::begin(hist_l), std::end(hist_l), 0.0f);
-  std::fill(std::begin(hist_r), std::end(hist_r), 0.0f);
-  std::fill(std::begin(dly_ml), std::end(dly_ml), 0.0f);
-  std::fill(std::begin(dly_mr), std::end(dly_mr), 0.0f);
-  pos = dpos = 0;
+  ml = mr = sl = sr = Chain{};
+  sl_delay = sr_delay = 0.0f;
 }
 
-void AXUCode::DPL2Shifter::Process(float ml, float mr, float sl, float sr, float* oml,
-                                   float* omr, float* osl, float* osr)
+void AXUCode::DPL2Shifter::Process(float ml_in, float mr_in, float sl_in, float sr_in,
+                                   float* oml, float* omr, float* osl, float* osr)
 {
-  hist_l[pos] = sl;
-  hist_r[pos] = sr;
-  float acc_l = 0.0f, acc_r = 0.0f;
-  int idx = pos;
-  for (int n = 0; n < TAPS; ++n)
-  {
-    acc_l += coef[n] * hist_l[idx];
-    acc_r += coef[n] * hist_r[idx];
-    idx = idx == 0 ? TAPS - 1 : idx - 1;
-  }
-  pos = pos + 1 == TAPS ? 0 : pos + 1;
-  *osl = acc_l;
-  *osr = acc_r;
-
-  *oml = dly_ml[dpos];
-  *omr = dly_mr[dpos];
-  dly_ml[dpos] = ml;
-  dly_mr[dpos] = mr;
-  dpos = dpos == DELAY ? 0 : dpos + 1;
+  // Chain A output delayed one sample, against chain B, gives a steady
+  // 90-degree difference (checked numerically from 20 Hz to 14 kHz at 32 kHz).
+  *oml = sl_delay;
+  *omr = sr_delay;
+  sl_delay = ml.Process(ml_in, kChainA);
+  sr_delay = mr.Process(mr_in, kChainA);
+  *osl = sl.Process(sl_in, kChainB);
+  *osr = sr.Process(sr_in, kChainB);
 }
 
 void AXUCode::OutputSamples(u32 lr_addr, u32 surround_addr)
@@ -779,6 +777,31 @@ void AXUCode::MixAUXBLR(u32 ul_addr, u32 dl_addr)
   const bool as_rears = m_old_dpl2_frame || m_prev_dpl2_frame;
   if (as_rears)
     m_dpl2_rears = true;
+
+  // Temporary: compare AUXB sent to the CPU with what comes back.
+  if (as_rears && m_dbg_auxbret_logs < 2000)
+  {
+    const int* chk =
+        reinterpret_cast<int*>(memory.GetPointerForRange(dl_addr, 2 * 5 * 32 * sizeof(int)));
+    double sl = 0, rl = 0, slrl = 0, sr = 0, rr = 0, srrr = 0, rlrr = 0;
+    for (u32 i = 0; i < 5 * 32; ++i)
+    {
+      const double a = m_samples_auxB_left[i], b = (int)Common::swap32(chk[i]);
+      const double c = m_samples_auxB_right[i], d = (int)Common::swap32(chk[160 + i]);
+      sl += a * a; rl += b * b; slrl += a * b;
+      sr += c * c; rr += d * d; srrr += c * d; rlrr += b * d;
+    }
+    if (sl > 1e6)
+    {
+      ++m_dbg_auxbret_logs;
+      NOTICE_LOG_FMT(DSPHLE,
+                     "SURROUNDRET sentL={:.0f} retL={:.0f} corrL={:+.2f} sentR={:.0f} retR={:.0f} "
+                     "corrR={:+.2f} retLvsR={:+.2f}",
+                     std::sqrt(sl / 160), std::sqrt(rl / 160), slrl / std::sqrt(sl * rl + 1),
+                     std::sqrt(sr / 160), std::sqrt(rr / 160), srrr / std::sqrt(sr * rr + 1),
+                     rlrr / std::sqrt(rl * rr + 1));
+    }
+  }
 
   // Mix AUXB L/R to MAIN L/R, and replace AUXB L/R
   int* ptr = reinterpret_cast<int*>(memory.GetPointerForRange(dl_addr, 2 * 5 * 32 * sizeof(int)));

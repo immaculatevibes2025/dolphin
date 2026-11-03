@@ -172,23 +172,22 @@ protected:
   // AUXB L/R hold the rear left/right channels that the ucode encodes into L/R.
   bool m_dpl2_rears = false;
 
-  // HLE surround: streaming 90-degree phase shifter (windowed Hilbert FIR) used
-  // for the DPL2 surround components, plus a matching delay for the fronts.
+  // HLE surround: 90-degree phase-difference network (two IIR allpass chains,
+  // Niemitalo design). Fronts go through chain A, surround components through
+  // chain B; the outputs differ by 90 degrees from ~20 Hz to near Nyquist.
   struct DPL2Shifter
   {
-    static constexpr int TAPS = 127;  // odd; group delay (TAPS-1)/2 samples
-    static constexpr int DELAY = (TAPS - 1) / 2;
-    float coef[TAPS]{};
-    float hist_l[TAPS]{}, hist_r[TAPS]{};
-    float dly_ml[DELAY + 1]{}, dly_mr[DELAY + 1]{};
-    int pos = 0, dpos = 0;
+    struct Chain
+    {
+      float x1[4]{}, x2[4]{}, y1[4]{}, y2[4]{};
+      float Process(float in, const float* a2);
+    };
+    Chain ml, mr, sl, sr;
+    float sl_delay = 0.0f, sr_delay = 0.0f;  // one-sample delay on the front (A) outputs
     bool active = false;
-    DPL2Shifter();
     void Reset();
-    // In: main L/R and surround components for Lt/Rt. Out: delayed fronts and
-    // phase-shifted surround components.
-    void Process(float ml, float mr, float sl, float sr, float* oml, float* omr, float* osl,
-                 float* osr);
+    void Process(float ml_in, float mr_in, float sl_in, float sr_in, float* oml, float* omr,
+                 float* osl, float* osr);
   };
   DPL2Shifter m_dpl2_shift;
   // Set when any voice this frame is in DPL2 mode (old GC ucode: mixer_control
@@ -199,6 +198,7 @@ protected:
   // this frame's voices have been processed.
   bool m_prev_dpl2_frame = false;
   u32 m_dbg_order_logs = 0;
+  u32 m_dbg_auxbret_logs = 0;
   std::vector<u16> m_dbg_order;
   // Temporary diagnostics for HLE surround work
   u32 m_dbg_cmds = 0;

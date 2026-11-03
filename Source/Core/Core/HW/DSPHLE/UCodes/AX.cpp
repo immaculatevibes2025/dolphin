@@ -808,16 +808,23 @@ void AXUCode::MixAUXBLR(u32 ul_addr, u32 dl_addr)
   for (u32 i = 0; i < 5 * 32; ++i)
   {
     int samp = Common::swap32(*ptr++);
-    m_samples_auxB_left[i] = samp;
+    // In DPL2 mode keep this frame's AUXB for the surround encode: the CPU
+    // hands back the previous frame's AUXB unchanged (5 ms late), which would
+    // misalign the surround components against the fronts.
     if (!as_rears)
+    {
+      m_samples_auxB_left[i] = samp;
       m_samples_main_left[i] += samp;
+    }
   }
   for (u32 i = 0; i < 5 * 32; ++i)
   {
     int samp = Common::swap32(*ptr++);
-    m_samples_auxB_right[i] = samp;
     if (!as_rears)
+    {
+      m_samples_auxB_right[i] = samp;
       m_samples_main_right[i] += samp;
+    }
   }
 }
 

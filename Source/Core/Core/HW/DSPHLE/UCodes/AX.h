@@ -176,6 +176,7 @@ protected:
   u32 m_dbg_cmds = 0;
   u32 m_dbg_mixctl = 0;
   u32 m_dbg_frames = 0;
+  u32 m_dbg_voice_logs = 0;
   u32 m_dbg_last_cmds = 0xFFFFFFFF;
   int m_dbg_peak[9]{};
   void MixAUXBLR(u32 ul_addr, u32 dl_addr);

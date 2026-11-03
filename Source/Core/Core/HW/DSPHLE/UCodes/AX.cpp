@@ -482,6 +482,20 @@ void AXUCode::ProcessPBList(u32 pb_addr)
       m_dbg_mixctl |= pb.mixer_control;
       if (m_crc == 0x4e8a8b21 && (pb.mixer_control & 0x0010))
         m_old_dpl2_frame = true;
+      // Temporary: per-voice volumes for DPL2-mode voices, rate limited.
+      if ((pb.mixer_control & 0x4010) && m_dbg_voice_logs < 400)
+      {
+        ++m_dbg_voice_logs;
+        const auto& mx = pb.mixer;
+        NOTICE_LOG_FMT(DSPHLE,
+                       "SURROUNDVOICE pb={:08x} mixctl={:04x} itd={} main={:04x}/{:04x} "
+                       "auxA={:04x}/{:04x} auxB={:04x}/{:04x} S main={:04x} auxA={:04x} auxB={:04x}",
+                       pb_addr, pb.mixer_control, pb.initial_time_delay.on, mx.main_left.volume,
+                       mx.main_right.volume, mx.auxA_left.volume, mx.auxA_right.volume,
+                       mx.auxB_left.volume, mx.auxB_right.volume,
+                       mx.main_surround.volume, mx.auxA_surround.volume,
+                       mx.auxB_surround.volume);
+      }
     }
 
     PBUpdateData updates = LoadPBUpdates(memory, pb);

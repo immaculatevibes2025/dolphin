@@ -189,8 +189,9 @@ protected:
                  float* osr);
   };
   DPL2Shifter m_dpl2_shift;
-  // Old GC ucode (0x4e8a8b21): a voice with mixer_control bit 0x0010 means DPL2
-  // mode, where AUXB L/R are the rear channels rather than an effects send.
+  // Set when any voice this frame is in DPL2 mode (old GC ucode: mixer_control
+  // 0x0010, newer: 0x4000). AUXB L/R then carry the Lt/Rt surround components,
+  // so MIX_AUXB_LR must not add them into the fronts.
   bool m_old_dpl2_frame = false;
   // Temporary diagnostics for HLE surround work
   u32 m_dbg_cmds = 0;

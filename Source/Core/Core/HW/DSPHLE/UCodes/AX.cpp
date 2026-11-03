@@ -481,7 +481,8 @@ void AXUCode::ProcessPBList(u32 pb_addr)
     if (pb.running)
     {
       m_dbg_mixctl |= pb.mixer_control;
-      if (m_crc == 0x4e8a8b21 && (pb.mixer_control & 0x0010))
+      // DPL2 voice: old GC ucode signals it with 0x0010, newer ones with 0x4000.
+      if (m_crc == 0x4e8a8b21 ? (pb.mixer_control & 0x0010) : (pb.mixer_control & 0x4000))
         m_old_dpl2_frame = true;
       // Temporary: per-voice volumes for DPL2-mode voices, rate limited.
       if ((pb.mixer_control & 0x0600) && (pb.mixer_control & 0x4000) && m_dbg_voice_logs < 3000)

@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <iterator>
@@ -634,8 +635,61 @@ void AXUCode::RunCompressor(u16 threshold, u16 release_frames, u32 table_addr, u
   }
 }
 
+AXUCode::DPL2Shifter::DPL2Shifter()
+{
+  constexpr double pi = 3.14159265358979323846;
+  for (int n = 0; n < TAPS; ++n)
+  {
+    const int k = n - DELAY;
+    double h = 0.0;
+    if (k % 2 != 0)
+      h = 2.0 / (pi * k);
+    const double w = 0.42 - 0.5 * std::cos(2 * pi * n / (TAPS - 1)) +
+                     0.08 * std::cos(4 * pi * n / (TAPS - 1));  // Blackman
+    coef[n] = static_cast<float>(h * w);
+  }
+}
+
+void AXUCode::DPL2Shifter::Reset()
+{
+  std::fill(std::begin(hist_l), std::end(hist_l), 0.0f);
+  std::fill(std::begin(hist_r), std::end(hist_r), 0.0f);
+  std::fill(std::begin(dly_ml), std::end(dly_ml), 0.0f);
+  std::fill(std::begin(dly_mr), std::end(dly_mr), 0.0f);
+  pos = dpos = 0;
+}
+
+void AXUCode::DPL2Shifter::Process(float ml, float mr, float sl, float sr, float* oml,
+                                   float* omr, float* osl, float* osr)
+{
+  hist_l[pos] = sl;
+  hist_r[pos] = sr;
+  float acc_l = 0.0f, acc_r = 0.0f;
+  int idx = pos;
+  for (int n = 0; n < TAPS; ++n)
+  {
+    acc_l += coef[n] * hist_l[idx];
+    acc_r += coef[n] * hist_r[idx];
+    idx = idx == 0 ? TAPS - 1 : idx - 1;
+  }
+  pos = pos + 1 == TAPS ? 0 : pos + 1;
+  *osl = acc_l;
+  *osr = acc_r;
+
+  *oml = dly_ml[dpos];
+  *omr = dly_mr[dpos];
+  dly_ml[dpos] = ml;
+  dly_mr[dpos] = mr;
+  dpos = dpos == DELAY ? 0 : dpos + 1;
+}
+
 void AXUCode::OutputSamples(u32 lr_addr, u32 surround_addr)
 {
+  if (m_dpl2_rears != m_dpl2_shift.active)
+  {
+    m_dpl2_shift.Reset();
+    m_dpl2_shift.active = m_dpl2_rears;
+  }
   {
     const int* bufs[9] = {m_samples_main_left,  m_samples_main_right,  m_samples_main_surround,
                           m_samples_auxA_left,  m_samples_auxA_right,  m_samples_auxA_surround,
@@ -677,12 +731,15 @@ void AXUCode::OutputSamples(u32 lr_addr, u32 surround_addr)
     s64 r = s64(m_samples_main_right[i]) + s;
     if (m_dpl2_rears)
     {
-      // DPL2 rear encode (no 90-degree shift yet): Ls -> -0.816 Lt / +0.577 Rt,
-      // Rs -> -0.577 Lt / +0.816 Rt. Anti-phase steers rear, amplitude steers L/R.
-      const s64 ls = m_samples_auxB_left[i];
-      const s64 rs = m_samples_auxB_right[i];
-      l -= (ls * 26739 + rs * 18907) >> 15;
-      r += (ls * 18907 + rs * 26739) >> 15;
+      // DPL2: the AX library has already computed the surround amounts for each
+      // output (e.g. rear-left = AUXB 0.816 L / 0.577 R), so AUXB L/R are the
+      // Lt/Rt surround components, not rear-left/rear-right channels. The ucode
+      // phase-shifts them by -90/+90 degrees relative to the fronts.
+      float ml, mr, sl, sr;
+      m_dpl2_shift.Process(float(l), float(r), float(m_samples_auxB_left[i]),
+                           float(m_samples_auxB_right[i]), &ml, &mr, &sl, &sr);
+      l = s64(ml - sl);
+      r = s64(mr + sr);
     }
     s16 left = ClampS16(l);
     s16 right = ClampS16(r);

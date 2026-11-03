@@ -169,6 +169,26 @@ protected:
   // HLE surround: set when SEND_AUX_AND_MIX ran this frame (DPL2 mode), meaning
   // AUXB L/R hold the rear left/right channels that the ucode encodes into L/R.
   bool m_dpl2_rears = false;
+
+  // HLE surround: streaming 90-degree phase shifter (windowed Hilbert FIR) used
+  // for the DPL2 surround components, plus a matching delay for the fronts.
+  struct DPL2Shifter
+  {
+    static constexpr int TAPS = 127;  // odd; group delay (TAPS-1)/2 samples
+    static constexpr int DELAY = (TAPS - 1) / 2;
+    float coef[TAPS]{};
+    float hist_l[TAPS]{}, hist_r[TAPS]{};
+    float dly_ml[DELAY + 1]{}, dly_mr[DELAY + 1]{};
+    int pos = 0, dpos = 0;
+    bool active = false;
+    DPL2Shifter();
+    void Reset();
+    // In: main L/R and surround components for Lt/Rt. Out: delayed fronts and
+    // phase-shifted surround components.
+    void Process(float ml, float mr, float sl, float sr, float* oml, float* omr, float* osl,
+                 float* osr);
+  };
+  DPL2Shifter m_dpl2_shift;
   // Old GC ucode (0x4e8a8b21): a voice with mixer_control bit 0x0010 means DPL2
   // mode, where AUXB L/R are the rear channels rather than an effects send.
   bool m_old_dpl2_frame = false;

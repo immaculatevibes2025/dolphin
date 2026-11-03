@@ -14,6 +14,8 @@
 #include <array>
 #include <memory>
 #include <optional>
+#include <string>
+#include <vector>
 
 #include "Common/BitUtils.h"
 #include "Common/CommonTypes.h"
@@ -193,6 +195,11 @@ protected:
   // 0x0010, newer: 0x4000). AUXB L/R then carry the Lt/Rt surround components,
   // so MIX_AUXB_LR must not add them into the fronts.
   bool m_old_dpl2_frame = false;
+  // Sticky copy from the previous frame, in case the ucode mixes AUXB before
+  // this frame's voices have been processed.
+  bool m_prev_dpl2_frame = false;
+  u32 m_dbg_order_logs = 0;
+  std::vector<u16> m_dbg_order;
   // Temporary diagnostics for HLE surround work
   u32 m_dbg_cmds = 0;
   u32 m_dbg_mixctl = 0;

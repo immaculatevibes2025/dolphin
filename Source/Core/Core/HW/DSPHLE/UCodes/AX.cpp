@@ -129,6 +129,8 @@ void AXUCode::HandleCommandList()
     u16 cmd = m_cmdlist[curr_idx++];
     if (cmd < 32)
       m_dbg_cmds |= 1u << cmd;
+    if (m_prev_dpl2_frame && m_dbg_order_logs < 20)
+      m_dbg_order.push_back(cmd);
 
     switch (cmd)
     {
@@ -371,6 +373,7 @@ AXMixControl AXUCode::ConvertMixerControl(u32 mixer_control)
 void AXUCode::SetupProcessing(u32 init_addr)
 {
   m_dpl2_rears = false;
+  m_prev_dpl2_frame = m_old_dpl2_frame;
   m_old_dpl2_frame = false;
   const std::array<BufferDesc, 9> buffers = {{
       {m_samples_main_left, 32},
@@ -714,6 +717,16 @@ void AXUCode::OutputSamples(u32 lr_addr, u32 surround_addr)
         p = 0;
     }
     m_dbg_cmds = 0;
+    if (!m_dbg_order.empty())
+    {
+      std::string seq;
+      for (u16 c : m_dbg_order)
+        seq += fmt::format("{:02x} ", c);
+      NOTICE_LOG_FMT(DSPHLE, "SURROUNDORDER cmds: {} (dpl2 voices this frame={})", seq,
+                     m_old_dpl2_frame);
+      m_dbg_order.clear();
+      ++m_dbg_order_logs;
+    }
   }
 
   auto& memory = m_dsphle->GetSystem().GetMemory();
@@ -763,7 +776,7 @@ void AXUCode::MixAUXBLR(u32 ul_addr, u32 dl_addr)
   // HLE surround: in old-ucode DPL2 mode AUXB L/R are the rear channels.
   // Keep them separate so OutputSamples encodes them as rears instead of
   // adding them to the fronts.
-  const bool as_rears = m_old_dpl2_frame;
+  const bool as_rears = m_old_dpl2_frame || m_prev_dpl2_frame;
   if (as_rears)
     m_dpl2_rears = true;
 

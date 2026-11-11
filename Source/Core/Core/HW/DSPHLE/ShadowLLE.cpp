@@ -320,7 +320,7 @@ void OnMailWrite(u32 mail)
     ++s_state->mails_logged;
     NOTICE_LOG_FMT(DSPHLE, "ShadowLLE: mail {:08x} {} after {} cycles, pc={:04x} cr={:04x}", mail,
                    consumed ? "taken" : "NOT taken", spent, core.DSPState().pc,
-                   core.DSPState().cr);
+                   core.DSPState().control_reg);
   }
 }
 
@@ -334,7 +334,7 @@ void OnUpdate(int cycles)
     NOTICE_LOG_FMT(DSPHLE,
                    "ShadowLLE: status pc={:04x} cr={:04x} state={} cycles={} cpu_mbox={:08x} "
                    "dsp_mbox={:08x} hle_frames={} lle_frames={} stuck_mails={} iram_crc={:08x}",
-                   core.DSPState().pc, core.DSPState().cr, static_cast<int>(core.GetState()), cycles,
+                   core.DSPState().pc, core.DSPState().control_reg, static_cast<int>(core.GetState()), cycles,
                    core.PeekMailbox(DSP::Mailbox::CPU), core.PeekMailbox(DSP::Mailbox::DSP),
                    s_state->hle_frames, s_state->lle_frames, s_state->stuck_mails,
                    core.DSPState().GetIRAMCRC());

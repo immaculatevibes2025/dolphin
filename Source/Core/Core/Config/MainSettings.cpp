@@ -308,6 +308,7 @@ const Info<bool> MAIN_DISABLE_SCREENSAVER{{System::Main, "Display", "DisableScre
 
 const Info<bool> MAIN_DSP_THREAD{{System::Main, "DSP", "DSPThread"}, false};
 const Info<bool> MAIN_DSP_CAPTURE_LOG{{System::Main, "DSP", "CaptureLog"}, false};
+const Info<bool> MAIN_DSP_SHADOW_LLE{{System::Main, "DSP", "ShadowLLE"}, false};
 const Info<bool> MAIN_DSP_JIT{{System::Main, "DSP", "EnableJIT"}, true};
 const Info<bool> MAIN_DUMP_AUDIO{{System::Main, "DSP", "DumpAudio"}, false};
 const Info<bool> MAIN_DUMP_AUDIO_SILENT{{System::Main, "DSP", "DumpAudioSilent"}, false};

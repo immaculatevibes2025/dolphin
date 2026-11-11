@@ -13,6 +13,7 @@
 #include "Core/DSP/DSPCodeUtil.h"
 #include "Core/DSP/DSPCore.h"
 #include "Core/HW/DSP.h"
+#include "Core/HW/DSPHLE/ShadowLLE.h"
 #include "Core/HW/DSPLLE/DSPSymbols.h"
 #include "Core/HW/Memmap.h"
 #include "Core/System.h"
@@ -32,6 +33,8 @@ u8 ReadHostMemory(u32 addr)
 
 void WriteHostMemory(u8 value, u32 addr)
 {
+  if (DSPHLE::Shadow::IsRunning())
+    return;
   Core::System::GetInstance().GetDSP().WriteARAM(value, addr);
 }
 
@@ -44,6 +47,11 @@ void DMAToDSP(u16* dst, u32 addr, u32 size)
 
 void DMAFromDSP(const u16* src, u32 addr, u32 size)
 {
+  if (DSPHLE::Shadow::IsRunning())
+  {
+    DSPHLE::Shadow::OnShadowDMAFromDSP(src, addr, size);
+    return;
+  }
   auto& system = Core::System::GetInstance();
   auto& memory = system.GetMemory();
   memory.CopyToEmuSwapped(addr, src, size);
@@ -66,6 +74,8 @@ bool IsWiiHost()
 
 void InterruptRequest()
 {
+  if (DSPHLE::Shadow::IsRunning())
+    return;
   // Fire an interrupt on the PPC ASAP.
   Core::System::GetInstance().GetDSP().GenerateDSPInterruptFromDSPEmu(DSP::INT_DSP);
 }

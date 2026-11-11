@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/HW/DSPHLE/DSPHLE.h"
+#include "Core/HW/DSPHLE/ShadowLLE.h"
 
 #include "Common/ChunkFile.h"
 #include "Common/CommonTypes.h"
@@ -27,6 +28,7 @@ bool DSPHLE::Initialize(bool wii, bool dsp_thread)
   m_last_ucode = nullptr;
 
   SetUCode(UCODE_ROM);
+  ::DSPHLE::Shadow::Initialize();
 
   m_dsp_control.Hex = 0;
   m_dsp_control.DSPHalt = 1;
@@ -44,11 +46,13 @@ void DSPHLE::DSP_StopSoundStream()
 
 void DSPHLE::Shutdown()
 {
+  ::DSPHLE::Shadow::Shutdown();
   m_ucode = nullptr;
 }
 
 void DSPHLE::DSP_Update(int cycles)
 {
+  ::DSPHLE::Shadow::OnUpdate(cycles);
   if (m_ucode != nullptr)
     m_ucode->Update();
 }
@@ -181,6 +185,7 @@ void DSPHLE::DSP_WriteMailBoxLow(bool cpu_mailbox, u16 value)
   if (cpu_mailbox)
   {
     m_dsp_state.cpu_mailbox = (m_dsp_state.cpu_mailbox & 0xFFFF0000) | value;
+    ::DSPHLE::Shadow::OnMailWrite(m_dsp_state.cpu_mailbox);
     SendMailToDSP(m_dsp_state.cpu_mailbox);
     // Mail sent so clear MSB to show that it is progressed
     m_dsp_state.cpu_mailbox &= 0x7FFFFFFF;
@@ -194,6 +199,7 @@ void DSPHLE::DSP_WriteMailBoxLow(bool cpu_mailbox, u16 value)
 // Other DSP functions
 u16 DSPHLE::DSP_WriteControlRegister(u16 value)
 {
+  ::DSPHLE::Shadow::OnControlWrite(value);
   DSP::UDSPControl temp(value);
 
   if (m_dsp_control.DSPHalt != temp.DSPHalt)

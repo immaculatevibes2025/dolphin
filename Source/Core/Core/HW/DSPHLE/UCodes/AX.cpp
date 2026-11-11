@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/HW/DSPHLE/UCodes/AX.h"
+#include "Core/HW/DSPHLE/ShadowLLE.h"
 
 #include <algorithm>
 #include <array>
@@ -766,6 +767,7 @@ void AXUCode::OutputSamples(u32 lr_addr, u32 surround_addr)
   }
 
   memory.CopyToEmu(lr_addr, buffer, sizeof(buffer));
+  ::DSPHLE::Shadow::OnHLEOutput(lr_addr, reinterpret_cast<const s16*>(buffer), 5 * 32);
 }
 
 void AXUCode::MixAUXBLR(u32 ul_addr, u32 dl_addr)

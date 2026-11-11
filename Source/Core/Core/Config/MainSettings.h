@@ -173,6 +173,7 @@ extern const Info<bool> MAIN_WII_WIILINK_ENABLE;
 
 extern const Info<bool> MAIN_DSP_THREAD;
 extern const Info<bool> MAIN_DSP_CAPTURE_LOG;
+extern const Info<bool> MAIN_DSP_SHADOW_LLE;
 extern const Info<bool> MAIN_DSP_JIT;
 extern const Info<bool> MAIN_DUMP_AUDIO;
 extern const Info<bool> MAIN_DUMP_AUDIO_SILENT;

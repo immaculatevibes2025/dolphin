@@ -18,6 +18,7 @@
 #include "Common/Swap.h"
 #include "Core/Config/MainSettings.h"
 #include "Core/DSP/DSPCore.h"
+#include "Core/DSP/DSPTables.h"
 #include "Core/DSP/Interpreter/DSPInterpreter.h"
 
 namespace DSPHLE::Shadow
@@ -245,6 +246,10 @@ void Initialize()
     return;
   }
   opts.core_type = DSP::DSPInitOptions::CoreType::Interpreter;
+
+  // The shared DSP opcode table is only built by DSP LLE's own startup, so in
+  // HLE mode it is empty; build it before the shadow decodes its first opcode.
+  DSP::InitInstructionTable();
 
   s_failed = false;
   s_seen = 0;

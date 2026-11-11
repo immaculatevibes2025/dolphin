@@ -3,6 +3,10 @@
 
 #include "Core/HW/DSPHLE/ShadowLLE.h"
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 #include <array>
 #include <string>
 #include <vector>
@@ -113,6 +117,58 @@ struct State
 };
 
 State* s_state = nullptr;
+bool s_failed = false;
+u32 s_seen = 0;  // bitmask of steps already logged once
+
+void FirstTime(u32 bit, const char* what)
+{
+  if (!(s_seen & bit))
+  {
+    s_seen |= bit;
+    NOTICE_LOG_FMT(DSPHLE, "ShadowLLE: first {}", what);
+  }
+}
+
+using StepFn = void (*)(void*);
+#ifdef _MSC_VER
+// Runs fn(arg); on a crash returns the exception code instead of taking Dolphin down.
+unsigned long GuardedCall(StepFn fn, void* arg)
+{
+  __try
+  {
+    fn(arg);
+  }
+  __except (1)
+  {
+    return GetExceptionCode();
+  }
+  return 0;
+}
+#else
+unsigned long GuardedCall(StepFn fn, void* arg)
+{
+  fn(arg);
+  return 0;
+}
+#endif
+
+// Returns false (and disables the shadow) if the step crashed.
+bool Guard(const char* what, StepFn fn, void* arg)
+{
+  if (s_failed)
+    return false;
+  const unsigned long code = GuardedCall(fn, arg);
+  if (code != 0)
+  {
+    s_failed = true;
+    if (s_state)
+      s_state->running = false;
+    ERROR_LOG_FMT(DSPHLE, "ShadowLLE: crashed in {} (exception {:08x}); shadow disabled, HLE continues",
+                  what, code);
+    return false;
+  }
+  return true;
+}
 
 void AckShadowMail()
 {
@@ -125,12 +181,18 @@ void AckShadowMail()
   }
 }
 
-void Run(int cycles)
+void RunStep(void* arg)
 {
   s_state->running = true;
-  s_state->core->RunCycles(cycles);
+  s_state->core->RunCycles(*static_cast<int*>(arg));
   s_state->running = false;
   AckShadowMail();
+}
+
+void Run(int cycles)
+{
+  FirstTime(1, "run");
+  Guard("run", RunStep, &cycles);
 }
 }  // namespace
 
@@ -141,7 +203,7 @@ bool IsEnabled()
 
 bool IsRunning()
 {
-  return s_state && s_state->running;
+  return s_state && s_state->running && !s_failed;
 }
 
 void Initialize()
@@ -165,8 +227,11 @@ void Initialize()
   }
   opts.core_type = DSP::DSPInitOptions::CoreType::Interpreter;
 
+  s_failed = false;
+  s_seen = 0;
   s_state = new State;
   s_state->core = std::make_unique<DSP::DSPCore>();
+  NOTICE_LOG_FMT(DSPHLE, "ShadowLLE: initializing core");
   if (!s_state->core->Initialize(opts))
   {
     ERROR_LOG_FMT(DSPHLE, "ShadowLLE: core init failed, shadow disabled");
@@ -174,7 +239,9 @@ void Initialize()
     s_state = nullptr;
     return;
   }
+  NOTICE_LOG_FMT(DSPHLE, "ShadowLLE: core initialized, resetting");
   s_state->core->Reset();
+  NOTICE_LOG_FMT(DSPHLE, "ShadowLLE: core reset done");
 
   const std::string dir = File::GetUserPath(D_DUMPAUDIO_IDX);
   File::CreateFullPath(dir);
@@ -196,30 +263,46 @@ void Shutdown()
   s_state = nullptr;
 }
 
-void OnControlWrite(u16 value)
+void ControlStep(void* arg)
 {
-  if (!s_state)
-    return;
+  const u16 value = *static_cast<u16*>(arg);
   auto& core = *s_state->core;
+  s_state->running = true;
   core.GetInterpreter().WriteControlRegister(value);
   if (value & DSP::CR_EXTERNAL_INT)
   {
-    s_state->running = true;
     core.CheckExternalInterrupt();
     core.CheckExceptions();
-    s_state->running = false;
   }
+  s_state->running = false;
+}
+
+void OnControlWrite(u16 value)
+{
+  if (!s_state || s_failed)
+    return;
+  FirstTime(2, "control write");
+  Guard("control write", ControlStep, &value);
+}
+
+void MailStep(void* arg)
+{
+  const u32 mail = *static_cast<u32*>(arg);
+  auto& core = *s_state->core;
+  core.WriteMailboxHigh(DSP::Mailbox::CPU, u16(mail >> 16));
+  core.WriteMailboxLow(DSP::Mailbox::CPU, u16(mail));
 }
 
 void OnMailWrite(u32 mail)
 {
-  if (!s_state)
+  if (!s_state || s_failed)
+    return;
+  FirstTime(4, "mail write");
+  if (!Guard("mail write", MailStep, &mail))
     return;
   auto& core = *s_state->core;
-  core.WriteMailboxHigh(DSP::Mailbox::CPU, u16(mail >> 16));
-  core.WriteMailboxLow(DSP::Mailbox::CPU, u16(mail));
   // Let the shadow consume the mail before the next one can overwrite it.
-  for (int spent = 0; spent < kMaxCyclesPerMail; spent += 2000)
+  for (int spent = 0; spent < kMaxCyclesPerMail && !s_failed; spent += 2000)
   {
     if (!(core.PeekMailbox(DSP::Mailbox::CPU) & 0x80000000))
       break;
@@ -229,7 +312,7 @@ void OnMailWrite(u32 mail)
 
 void OnUpdate(int cycles)
 {
-  if (!s_state || cycles <= 0)
+  if (!s_state || s_failed || cycles <= 0)
     return;
   Run(cycles);
 }
@@ -254,6 +337,7 @@ void OnShadowDMAFromDSP(const u16* src, u32 addr, u32 size)
 {
   if (!s_state)
     return;
+  FirstTime(8, "DMA from shadow DSP");
   bool is_output = false;
   for (u32 a : s_state->recent_out)
     is_output |= (a != 0 && a == addr);

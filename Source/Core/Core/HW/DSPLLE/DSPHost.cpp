@@ -64,6 +64,8 @@ void OSD_AddMessage(std::string str, u32 ms)
 
 bool OnThread()
 {
+  if (DSPHLE::Shadow::IsRunning())
+    return false;
   return Config::Get(Config::MAIN_DSP_THREAD);
 }
 

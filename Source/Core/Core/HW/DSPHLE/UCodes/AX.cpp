@@ -375,6 +375,7 @@ void AXUCode::SetupProcessing(u32 init_addr)
   m_dpl2_rears = false;
   m_prev_dpl2_frame = m_old_dpl2_frame;
   m_old_dpl2_frame = false;
+  m_auxb_dpl2_mixed = false;
   const std::array<BufferDesc, 9> buffers = {{
       {m_samples_main_left, 32},
       {m_samples_main_right, 32},
@@ -687,6 +688,10 @@ void AXUCode::DPL2Shifter::Process(float ml_in, float mr_in, float sl_in, float 
 
 void AXUCode::OutputSamples(u32 lr_addr, u32 surround_addr)
 {
+  // SEND_AUX_AND_MIX can run after MIX_AUXB_LR (Soul Calibur 2 does), so it
+  // may have turned the encode back on; the ucode-style mix takes priority.
+  if (m_auxb_dpl2_mixed)
+    m_dpl2_rears = false;
   if (m_dpl2_rears != m_dpl2_shift.active)
   {
     m_dpl2_shift.Reset();
@@ -778,7 +783,7 @@ void AXUCode::MixAUXBLR(u32 ul_addr, u32 dl_addr)
   // The surround components are mixed here, so OutputSamples must not encode
   // AUXB a second time.
   if (as_rears)
-    m_dpl2_rears = false;
+    m_auxb_dpl2_mixed = true;
 
   // Temporary: compare AUXB sent to the CPU with what comes back.
   if (as_rears && m_dbg_auxbret_logs < 2000)

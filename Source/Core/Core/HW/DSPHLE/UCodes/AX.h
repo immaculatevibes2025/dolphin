@@ -197,6 +197,9 @@ protected:
   // Sticky copy from the previous frame, in case the ucode mixes AUXB before
   // this frame's voices have been processed.
   bool m_prev_dpl2_frame = false;
+  // Set when MIX_AUXB_LR already mixed AUXB into the fronts the way the real
+  // ucode does in DPL2 mode, so OutputSamples must not encode it again.
+  bool m_auxb_dpl2_mixed = false;
   u32 m_dbg_order_logs = 0;
   u32 m_dbg_auxbret_logs = 0;
   std::vector<u16> m_dbg_order;

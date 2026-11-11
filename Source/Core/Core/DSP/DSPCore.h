@@ -408,6 +408,7 @@ struct SDSP
 
   // Sets the calculated IRAM CRC for debugging purposes.
   void SetIRAMCRC(u32 crc) { m_iram_crc = crc; }
+  u32 GetIRAMCRC() const { return m_iram_crc; }
 
   // Saves and loads any necessary state.
   void DoState(PointerWrap& p);

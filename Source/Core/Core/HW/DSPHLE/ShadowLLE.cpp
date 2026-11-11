@@ -25,7 +25,7 @@ namespace DSPHLE::Shadow
 namespace
 {
 constexpr u32 kSampleRate = 32000;
-constexpr int kMaxCyclesPerMail = 200000;
+constexpr int kMaxCyclesPerMail = 20000;
 
 class WavWriter
 {
@@ -114,6 +114,9 @@ struct State
   std::array<u32, 8> recent_out{};
   u32 recent_pos = 0;
   u64 hle_frames = 0, lle_frames = 0;
+  u32 mails_logged = 0;
+  u32 stuck_mails = 0;
+  u64 updates = 0;
 };
 
 State* s_state = nullptr;
@@ -302,11 +305,22 @@ void OnMailWrite(u32 mail)
     return;
   auto& core = *s_state->core;
   // Let the shadow consume the mail before the next one can overwrite it.
-  for (int spent = 0; spent < kMaxCyclesPerMail && !s_failed; spent += 2000)
+  int spent = 0;
+  for (; spent < kMaxCyclesPerMail && !s_failed; spent += 2000)
   {
     if (!(core.PeekMailbox(DSP::Mailbox::CPU) & 0x80000000))
       break;
     Run(2000);
+  }
+  const bool consumed = !(core.PeekMailbox(DSP::Mailbox::CPU) & 0x80000000);
+  if (!consumed)
+    ++s_state->stuck_mails;
+  if (s_state->mails_logged < 80)
+  {
+    ++s_state->mails_logged;
+    NOTICE_LOG_FMT(DSPHLE, "ShadowLLE: mail {:08x} {} after {} cycles, pc={:04x} cr={:04x}", mail,
+                   consumed ? "taken" : "NOT taken", spent, core.DSPState().pc,
+                   core.DSPState().cr);
   }
 }
 
@@ -314,6 +328,17 @@ void OnUpdate(int cycles)
 {
   if (!s_state || s_failed || cycles <= 0)
     return;
+  if (++s_state->updates % 2000 == 1)
+  {
+    auto& core = *s_state->core;
+    NOTICE_LOG_FMT(DSPHLE,
+                   "ShadowLLE: status pc={:04x} cr={:04x} state={} cycles={} cpu_mbox={:08x} "
+                   "dsp_mbox={:08x} hle_frames={} lle_frames={} stuck_mails={} iram_crc={:08x}",
+                   core.DSPState().pc, core.DSPState().cr, static_cast<int>(core.GetState()), cycles,
+                   core.PeekMailbox(DSP::Mailbox::CPU), core.PeekMailbox(DSP::Mailbox::DSP),
+                   s_state->hle_frames, s_state->lle_frames, s_state->stuck_mails,
+                   core.DSPState().GetIRAMCRC());
+  }
   Run(cycles);
 }
 

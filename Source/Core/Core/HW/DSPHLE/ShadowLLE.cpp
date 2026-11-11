@@ -135,13 +135,22 @@ void FirstTime(u32 bit, const char* what)
 using StepFn = void (*)(void*);
 #ifdef _MSC_VER
 // Runs fn(arg); on a crash returns the exception code instead of taking Dolphin down.
+uintptr_t s_fault_addr = 0, s_fault_data = 0;
+int Filter(EXCEPTION_POINTERS* ep)
+{
+  s_fault_addr = reinterpret_cast<uintptr_t>(ep->ExceptionRecord->ExceptionAddress);
+  s_fault_data = ep->ExceptionRecord->NumberParameters >= 2 ?
+                     ep->ExceptionRecord->ExceptionInformation[1] :
+                     0;
+  return EXCEPTION_EXECUTE_HANDLER;
+}
 unsigned long GuardedCall(StepFn fn, void* arg)
 {
   __try
   {
     fn(arg);
   }
-  __except (1)
+  __except (Filter(GetExceptionInformation()))
   {
     return GetExceptionCode();
   }
@@ -166,8 +175,15 @@ bool Guard(const char* what, StepFn fn, void* arg)
     s_failed = true;
     if (s_state)
       s_state->running = false;
-    ERROR_LOG_FMT(DSPHLE, "ShadowLLE: crashed in {} (exception {:08x}); shadow disabled, HLE continues",
-                  what, code);
+    NOTICE_LOG_FMT(DSPHLE,
+                   "ShadowLLE: CRASHED in {} (exception {:08x}) at dsp pc={:04x}; shadow disabled, "
+                   "HLE continues",
+                   what, code, s_state ? s_state->core->DSPState().pc : 0);
+#ifdef _MSC_VER
+    NOTICE_LOG_FMT(DSPHLE, "ShadowLLE: fault at host {:x} (Dolphin.exe base {:x}), data address {:x}",
+                   s_fault_addr, reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr)),
+                   s_fault_data);
+#endif
     return false;
   }
   return true;

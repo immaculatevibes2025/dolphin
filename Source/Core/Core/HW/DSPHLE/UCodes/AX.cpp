@@ -796,6 +796,7 @@ void AXUCode::MixAUXBLR(u32 ul_addr, u32 dl_addr)
   // Keep them separate so OutputSamples encodes them as rears instead of
   // adding them to the fronts.
   const bool as_rears = m_old_dpl2_frame || m_prev_dpl2_frame;
+  const bool old_ucode = m_crc == 0x4e8a8b21;
   // The surround components are mixed here, so OutputSamples must not encode
   // AUXB a second time.
   if (as_rears)
@@ -848,9 +849,14 @@ void AXUCode::MixAUXBLR(u32 ul_addr, u32 dl_addr)
   {
     int samp = Common::swap32(*ptr++);
     m_samples_auxB_left[i] = samp;
-    // DPL2: the returned AUXB L is the Lt surround component and goes into the
-    // left output inverted (matches LLE for Soul Calibur 2's surround test).
-    if (as_rears)
+    // DPL2: the returned AUXB L/R are the Lt/Rt surround components, mixed in
+    // anti-phase. The newer ucodes (07f88145 @ 0x0dcc) add L and subtract R,
+    // which a shadow-LLE comparison in Soul Calibur 2 confirms (rear L/R
+    // correlation -0.94/-0.92, matching LLE). The old ucode (Rogue Squadron 2)
+    // matched LLE with the opposite polarity.
+    if (as_rears && !old_ucode)
+      m_samples_main_left[i] += samp;
+    else if (as_rears)
       m_samples_main_left[i] -= samp;
     else
       m_samples_main_left[i] += samp;
@@ -859,7 +865,10 @@ void AXUCode::MixAUXBLR(u32 ul_addr, u32 dl_addr)
   {
     int samp = Common::swap32(*ptr++);
     m_samples_auxB_right[i] = samp;
-    m_samples_main_right[i] += samp;
+    if (as_rears && !old_ucode)
+      m_samples_main_right[i] -= samp;
+    else
+      m_samples_main_right[i] += samp;
   }
 }
 

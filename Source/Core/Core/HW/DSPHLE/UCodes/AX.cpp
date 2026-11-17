@@ -768,6 +768,20 @@ void AXUCode::OutputSamples(u32 lr_addr, u32 surround_addr)
 
   memory.CopyToEmu(lr_addr, buffer, sizeof(buffer));
   ::DSPHLE::Shadow::OnHLEOutput(lr_addr, reinterpret_cast<const s16*>(buffer), 5 * 32);
+  // One bus frame per output frame (zeros when this frame had no DPL2 mix).
+  if (!m_bus_valid)
+  {
+    std::fill(std::begin(m_bus_main_l), std::end(m_bus_main_l), 0);
+    std::fill(std::begin(m_bus_main_r), std::end(m_bus_main_r), 0);
+    std::fill(std::begin(m_bus_sent_l), std::end(m_bus_sent_l), 0);
+    std::fill(std::begin(m_bus_sent_r), std::end(m_bus_sent_r), 0);
+    std::fill(std::begin(m_bus_ret_l), std::end(m_bus_ret_l), 0);
+    std::fill(std::begin(m_bus_ret_r), std::end(m_bus_ret_r), 0);
+  }
+  const int* const buses[6] = {m_bus_main_l, m_bus_main_r, m_bus_sent_l,
+                               m_bus_sent_r, m_bus_ret_l,  m_bus_ret_r};
+  ::DSPHLE::Shadow::OnHLEBuses(buses);
+  m_bus_valid = false;
 }
 
 void AXUCode::MixAUXBLR(u32 ul_addr, u32 dl_addr)
@@ -810,6 +824,22 @@ void AXUCode::MixAUXBLR(u32 ul_addr, u32 dl_addr)
                      std::sqrt(sr / 160), std::sqrt(rr / 160), srrr / std::sqrt(sr * rr + 1),
                      rlrr / std::sqrt(rl * rr + 1));
     }
+  }
+
+  // Shadow comparison: keep this frame's buses before they are mixed.
+  if (as_rears)
+  {
+    std::copy(std::begin(m_samples_main_left), std::end(m_samples_main_left), m_bus_main_l);
+    std::copy(std::begin(m_samples_main_right), std::end(m_samples_main_right), m_bus_main_r);
+    std::copy(std::begin(m_samples_auxB_left), std::end(m_samples_auxB_left), m_bus_sent_l);
+    std::copy(std::begin(m_samples_auxB_right), std::end(m_samples_auxB_right), m_bus_sent_r);
+    const int* ret = reinterpret_cast<int*>(memory.GetPointerForRange(dl_addr, 2 * 5 * 32 * sizeof(int)));
+    for (u32 i = 0; i < 5 * 32; ++i)
+    {
+      m_bus_ret_l[i] = (int)Common::swap32(ret[i]);
+      m_bus_ret_r[i] = (int)Common::swap32(ret[160 + i]);
+    }
+    m_bus_valid = true;
   }
 
   // Mix AUXB L/R to MAIN L/R, and replace AUXB L/R

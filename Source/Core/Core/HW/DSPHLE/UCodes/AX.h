@@ -202,6 +202,10 @@ protected:
   bool m_auxb_dpl2_mixed = false;
   u32 m_dbg_order_logs = 0;
   u32 m_dbg_auxbret_logs = 0;
+  // Shadow comparison buses (one frame)
+  int m_bus_main_l[160]{}, m_bus_main_r[160]{}, m_bus_sent_l[160]{}, m_bus_sent_r[160]{};
+  int m_bus_ret_l[160]{}, m_bus_ret_r[160]{};
+  bool m_bus_valid = false;
   std::vector<u16> m_dbg_order;
   // Temporary diagnostics for HLE surround work
   u32 m_dbg_cmds = 0;

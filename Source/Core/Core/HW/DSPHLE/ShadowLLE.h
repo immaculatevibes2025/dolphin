@@ -33,6 +33,11 @@ void OnUpdate(int cycles);
 // samples: interleaved big-endian s16 R,L pairs as written to emulated memory.
 void OnHLEOutput(u32 addr, const s16* samples_be, u32 num_frames);
 
+// Called by HLE AX once per frame in DPL2 mode with its internal buses, each
+// 160 samples: main L, main R (before AUXB is mixed in), AUXB L/R as uploaded
+// to the CPU, AUXB L/R as returned by the CPU. Written to shadow_hle_buses.wav.
+void OnHLEBuses(const int* const bufs[6]);
+
 // True while the shadow core is executing (used to redirect DSP::Host calls).
 bool IsRunning();
 // Called from DSP::Host::DMAFromDSP while the shadow runs.

@@ -100,6 +100,65 @@ private:
   u32 m_writes = 0;
 };
 
+class BusWriter
+{
+public:
+  bool Open(const std::string& path)
+  {
+    m_file.Open(path, "wb");
+    m_bytes = 0;
+    if (m_file.IsOpen())
+      Header();
+    return m_file.IsOpen();
+  }
+  void Write(const s32* interleaved, u32 frames)
+  {
+    if (!m_file.IsOpen())
+      return;
+    m_file.WriteBytes(interleaved, frames * kCh * 4);
+    m_bytes += frames * kCh * 4;
+    if (++m_writes % 200 == 0)
+      Fix();
+  }
+  void Close()
+  {
+    if (!m_file.IsOpen())
+      return;
+    Fix();
+    m_file.Close();
+  }
+
+private:
+  static constexpr u32 kCh = 6;
+  static void P32(u8* p, u32 v)
+  {
+    for (int i = 0; i < 4; ++i)
+      p[i] = u8(v >> (8 * i));
+  }
+  void Header()
+  {
+    u8 h[44] = {'R', 'I', 'F', 'F', 0, 0, 0, 0, 'W', 'A', 'V', 'E', 'f', 'm', 't', ' ', 16, 0, 0, 0, 1, 0, kCh, 0};
+    P32(h + 4, 36 + m_bytes);
+    P32(h + 24, kSampleRate);
+    P32(h + 28, kSampleRate * kCh * 4);
+    h[32] = kCh * 4;
+    h[34] = 32;
+    h[36] = 'd'; h[37] = 'a'; h[38] = 't'; h[39] = 'a';
+    P32(h + 40, m_bytes);
+    m_file.WriteBytes(h, sizeof(h));
+  }
+  void Fix()
+  {
+    const u64 pos = m_file.Tell();
+    m_file.Seek(0, File::SeekOrigin::Begin);
+    Header();
+    m_file.Seek(pos, File::SeekOrigin::Begin);
+    m_file.Flush();
+  }
+  File::IOFile m_file;
+  u32 m_bytes = 0, m_writes = 0;
+};
+
 bool LoadRom(u16* rom, const std::string& filename, u32 size_in_bytes)
 {
   std::string bytes;
@@ -116,6 +175,8 @@ struct State
   std::unique_ptr<DSP::DSPCore> core;
   bool running = false;
   WavWriter hle_wav, lle_wav;
+  BusWriter bus_wav;
+  u64 bus_frames = 0;
   // Output addresses HLE wrote recently; shadow DMAs to these are audio frames.
   std::array<u32, 8> recent_out{};
   u32 recent_pos = 0;
@@ -282,6 +343,7 @@ void Initialize()
   File::CreateFullPath(dir);
   s_state->hle_wav.Open(dir + "shadow_hle.wav");
   s_state->lle_wav.Open(dir + "shadow_lle.wav");
+  s_state->bus_wav.Open(dir + "shadow_hle_buses.wav");
   NOTICE_LOG_FMT(DSPHLE, "ShadowLLE: enabled, writing {}shadow_hle.wav / shadow_lle.wav", dir);
 }
 
@@ -290,10 +352,11 @@ void Shutdown()
   if (!s_state)
     return;
   FlushShadowFrame();
-  NOTICE_LOG_FMT(DSPHLE, "ShadowLLE: shutting down, {} HLE frames, {} LLE frames",
-                 s_state->hle_frames, s_state->lle_frames);
+  NOTICE_LOG_FMT(DSPHLE, "ShadowLLE: shutting down, {} HLE frames, {} LLE frames, {} bus frames",
+                 s_state->hle_frames, s_state->lle_frames, s_state->bus_frames);
   s_state->hle_wav.Close();
   s_state->lle_wav.Close();
+  s_state->bus_wav.Close();
   s_state->core->Shutdown();
   delete s_state;
   s_state = nullptr;
@@ -411,6 +474,18 @@ void FlushShadowFrame()
   st.frame_filled = 0;
 }
 }  // namespace
+
+void OnHLEBuses(const int* const bufs[6])
+{
+  if (!s_state)
+    return;
+  std::vector<s32> v(160 * 6);
+  for (u32 i = 0; i < 160; ++i)
+    for (u32 c = 0; c < 6; ++c)
+      v[i * 6 + c] = bufs[c][i];
+  s_state->bus_wav.Write(v.data(), 160);
+  ++s_state->bus_frames;
+}
 
 void OnShadowDMAFromDSP(const u16* src, u32 addr, u32 size)
 {

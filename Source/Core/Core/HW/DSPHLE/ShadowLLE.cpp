@@ -11,6 +11,8 @@
 #include <string>
 #include <vector>
 
+#include <fmt/format.h>
+
 #include "Common/CommonPaths.h"
 #include "Common/FileUtil.h"
 #include "Common/IOFile.h"
@@ -26,7 +28,10 @@ namespace DSPHLE::Shadow
 namespace
 {
 constexpr u32 kSampleRate = 32000;
-constexpr int kMaxCyclesPerMail = 20000;
+// Short wait: if the shadow is busy it takes the mail later on its own, and a
+// long wait here slows emulation (audible as crackling).
+constexpr int kMaxCyclesPerMail = 4000;
+constexpr u32 kFrameBytes = 5 * 32 * 4;  // one AX frame: 160 stereo s16 samples
 
 class WavWriter
 {
@@ -116,11 +121,17 @@ struct State
   u32 recent_pos = 0;
   u64 hle_frames = 0, lle_frames = 0;
   u32 mails_logged = 0;
+  u32 dma_logged = 0;
+  // Frame being assembled from the shadow's output DMAs (which may arrive in pieces).
+  std::array<u16, kFrameBytes / 2> frame{};
+  u32 frame_addr = 0;
+  u32 frame_filled = 0;
   u32 stuck_mails = 0;
   u64 updates = 0;
 };
 
 State* s_state = nullptr;
+void FlushShadowFrame();
 bool s_failed = false;
 u32 s_seen = 0;  // bitmask of steps already logged once
 
@@ -278,6 +289,7 @@ void Shutdown()
 {
   if (!s_state)
     return;
+  FlushShadowFrame();
   NOTICE_LOG_FMT(DSPHLE, "ShadowLLE: shutting down, {} HLE frames, {} LLE frames",
                  s_state->hle_frames, s_state->lle_frames);
   s_state->hle_wav.Close();
@@ -379,25 +391,59 @@ void OnHLEOutput(u32 addr, const s16* samples_be, u32 num_frames)
   ++s_state->hle_frames;
 }
 
+namespace
+{
+void FlushShadowFrame()
+{
+  auto& st = *s_state;
+  if (st.frame_filled == 0)
+    return;
+  // DSP words in host order, R,L pairs -> WAV L,R.
+  std::vector<s16> lr(kFrameBytes / 2);
+  for (u32 i = 0; i < kFrameBytes / 4; ++i)
+  {
+    lr[2 * i + 0] = s16(st.frame[2 * i + 1]);
+    lr[2 * i + 1] = s16(st.frame[2 * i + 0]);
+  }
+  st.lle_wav.Write(lr.data(), kFrameBytes / 4);
+  ++st.lle_frames;
+  st.frame.fill(0);
+  st.frame_filled = 0;
+}
+}  // namespace
+
 void OnShadowDMAFromDSP(const u16* src, u32 addr, u32 size)
 {
   if (!s_state)
     return;
   FirstTime(8, "DMA from shadow DSP");
-  bool is_output = false;
-  for (u32 a : s_state->recent_out)
-    is_output |= (a != 0 && a == addr);
-  if (!is_output || size % 4 != 0)
-    return;
-  // src is DSP words in host order: R,L pairs.
-  const u32 num_frames = size / 4;
-  std::vector<s16> lr(num_frames * 2);
-  for (u32 i = 0; i < num_frames; ++i)
+  auto& st = *s_state;
+  // Is this write inside one of the output buffers HLE wrote recently?
+  u32 base = 0;
+  for (u32 a : st.recent_out)
   {
-    lr[2 * i + 0] = s16(src[2 * i + 1]);
-    lr[2 * i + 1] = s16(src[2 * i + 0]);
+    if (a != 0 && addr >= a && addr + size <= a + kFrameBytes)
+      base = a;
   }
-  s_state->lle_wav.Write(lr.data(), num_frames);
-  ++s_state->lle_frames;
+  if (st.dma_logged < 40)
+  {
+    ++st.dma_logged;
+    NOTICE_LOG_FMT(DSPHLE, "ShadowLLE: shadow DMA to {:08x} size {:x}{}", addr, size,
+                   base ? fmt::format(" (output buffer {:08x} +{:x})", base, addr - base) : "");
+  }
+  if (base == 0)
+    return;
+  // A write to a different buffer, or back to the start, begins a new frame.
+  if (base != st.frame_addr || addr == base)
+  {
+    FlushShadowFrame();
+    st.frame_addr = base;
+  }
+  const u32 off = (addr - base) / 2;
+  for (u32 i = 0; i < size / 2 && off + i < st.frame.size(); ++i)
+    st.frame[off + i] = src[i];
+  st.frame_filled += size;
+  if (st.frame_filled >= kFrameBytes)
+    FlushShadowFrame();
 }
 }  // namespace DSPHLE::Shadow
